@@ -31,58 +31,66 @@ class GameState(Enum):
     COMPLETE = auto()       # 완료
 
 
-# 카테고리 정의 (PDF 기준: 3~7번)
-# 시계 1~5시 방향에 매핑 (1시→카테고리3, 2시→카테고리4, ...)
+# ============== 동적 시계판 매핑 ==============
+# 각 세션 단계별로 다른 등분 사용:
+# - 카테고리: 5등분
+# - 글자수: 8등분 (1~8글자)
+# - 자음(초성): 14등분
+# - 모음(중성): 10등분
+
+# 카테고리 정의 (5등분)
 CATEGORIES = {
-    1: "감정 및 상태",    # 카테고리 3 (PDF 기준)
-    2: "행동 및 동사",    # 카테고리 4
-    3: "동물",           # 카테고리 5
-    4: "스포츠",         # 카테고리 6
-    5: "날씨 및 자연"     # 카테고리 7
+    0: "감정 및 상태",
+    1: "행동 및 동사",
+    2: "동물",
+    3: "스포츠",
+    4: "날씨 및 자연"
 }
+NUM_CATEGORIES = 5
 
-# PDF 카테고리 번호와 시계 영역 매핑
-CATEGORY_TO_CLOCK = {3: 1, 4: 2, 5: 3, 6: 4, 7: 5}
-CLOCK_TO_CATEGORY = {1: 3, 2: 4, 3: 5, 4: 6, 5: 7}
+# 글자수 (8등분, 1~8글자)
+NUM_SYLLABLE_OPTIONS = 8
 
-# 자음 배치 (시계 방향, 12시부터)
-# 14개 자음을 12개 영역에 배치 (일부 영역에 2개)
+# 자음 배치 (14등분) - ㄱ부터 ㅎ까지 순서대로
 CONSONANTS = {
-    0: 'ㅇ',   # 12시
-    1: 'ㄱ',   # 1시
-    2: 'ㄴ',   # 2시
-    3: 'ㄷ',   # 3시
-    4: 'ㄹ',   # 4시
-    5: 'ㅁ',   # 5시
-    6: 'ㅂ',   # 6시
-    7: 'ㅅ',   # 7시
-    8: 'ㅈ',   # 8시
-    9: 'ㅊ',   # 9시
-    10: 'ㅋ',  # 10시
-    11: 'ㅌ',  # 11시
+    0: 'ㄱ',
+    1: 'ㄴ',
+    2: 'ㄷ',
+    3: 'ㄹ',
+    4: 'ㅁ',
+    5: 'ㅂ',
+    6: 'ㅅ',
+    7: 'ㅇ',
+    8: 'ㅈ',
+    9: 'ㅊ',
+    10: 'ㅋ',
+    11: 'ㅌ',
+    12: 'ㅍ',
+    13: 'ㅎ',
 }
+NUM_CONSONANTS = 14
 
-# 추가 자음 (더블 탭 또는 특수 제스처)
-CONSONANTS_EXTRA = {
-    0: 'ㅎ',   # 12시 더블
-    7: 'ㅆ',   # 7시 더블 (쌍시옷)
-    10: 'ㅍ',  # 10시 더블
-}
-
-# 모음 배치 (시계 방향)
+# 모음 배치 (10등분) - 기본 모음
 VOWELS = {
-    0: 'ㅡ',   # 12시 (가로선)
-    1: 'ㅏ',   # 1시
-    2: 'ㅑ',   # 2시
-    3: 'ㅓ',   # 3시
-    4: 'ㅕ',   # 4시
-    5: 'ㅗ',   # 5시
-    6: 'ㅛ',   # 6시
-    7: 'ㅜ',   # 7시
-    8: 'ㅠ',   # 8시
-    9: 'ㅣ',   # 9시 (세로선)
-    10: 'ㅔ',  # 10시
-    11: 'ㅐ',  # 11시
+    0: 'ㅏ',
+    1: 'ㅑ',
+    2: 'ㅓ',
+    3: 'ㅕ',
+    4: 'ㅗ',
+    5: 'ㅛ',
+    6: 'ㅜ',
+    7: 'ㅠ',
+    8: 'ㅡ',
+    9: 'ㅣ',
+}
+NUM_VOWELS = 10
+
+# 각 상태별 등분 수
+DIVISIONS_BY_STATE = {
+    GameState.CATEGORY: NUM_CATEGORIES,        # 5등분
+    GameState.SYLLABLE_COUNT: NUM_SYLLABLE_OPTIONS,  # 8등분
+    GameState.CONSONANT: NUM_CONSONANTS,       # 14등분
+    GameState.VOWEL: NUM_VOWELS,               # 10등분
 }
 
 
@@ -114,14 +122,20 @@ def combine_hangul(cho: str, jung: str, jong: str = '') -> str:
 
 @dataclass
 class ClockRegion:
-    """시계판 영역 정보"""
+    """동적 시계판 영역 - 등분 수에 따라 영역 크기 조절"""
     center: Tuple[int, int]  # 화면 중심
     radius: int              # 시계판 반지름
     
-    def get_region_index(self, x: int, y: int) -> Optional[int]:
+    def get_region_index(self, x: int, y: int, num_divisions: int = 12) -> Optional[int]:
         """
-        좌표가 어느 시계 영역(0-11)에 있는지 반환
-        중심에서 너무 가까우면 None (무효)
+        좌표가 어느 영역에 있는지 반환 (동적 등분)
+        
+        Args:
+            x, y: 좌표
+            num_divisions: 등분 수 (5, 8, 10, 14 등)
+        
+        Returns:
+            영역 인덱스 (0 ~ num_divisions-1) 또는 None (중심 영역)
         """
         cx, cy = self.center
         dx = x - cx
@@ -139,23 +153,34 @@ class ClockRegion:
         if angle_deg < 0:
             angle_deg += 360
         
-        # 12등분 (각 영역 30도)
-        region = int((angle_deg + 15) % 360 / 30)
+        # 동적 등분 (각 영역 = 360 / num_divisions 도)
+        degrees_per_region = 360.0 / num_divisions
+        half_region = degrees_per_region / 2
+        
+        region = int((angle_deg + half_region) % 360 / degrees_per_region)
         return region
     
-    def get_region_for_5_zones(self, x: int, y: int) -> Optional[int]:
+    def get_region_for_state(self, x: int, y: int, state: 'GameState') -> Optional[int]:
         """
-        5개 영역용 (카테고리, 글자수)
-        1~5번 영역 반환 (시계 1시~5시 방향)
+        현재 게임 상태에 맞는 등분으로 영역 반환
         """
-        region = self.get_region_index(x, y)
-        if region is None:
-            return None
-        
-        # 1시~5시 방향만 유효 (region 1~5)
-        if 1 <= region <= 5:
-            return region
-        return None
+        num_divisions = DIVISIONS_BY_STATE.get(state, 12)
+        return self.get_region_index(x, y, num_divisions)
+    
+    def get_region_angle(self, region_index: int, num_divisions: int) -> float:
+        """영역의 중심 각도 반환 (라디안)"""
+        degrees_per_region = 360.0 / num_divisions
+        angle_deg = region_index * degrees_per_region - 90  # 12시 방향 기준
+        return math.radians(angle_deg)
+    
+    def get_region_center(self, region_index: int, num_divisions: int, 
+                          radius_ratio: float = 0.65) -> Tuple[int, int]:
+        """영역 중심 좌표 반환"""
+        angle = self.get_region_angle(region_index, num_divisions)
+        cx, cy = self.center
+        x = int(cx + self.radius * radius_ratio * math.cos(angle))
+        y = int(cy + self.radius * radius_ratio * math.sin(angle))
+        return (x, y)
 
 
 # ============== 손 검출기 ==============
@@ -289,7 +314,7 @@ class InputSession:
 class GestureStateMachine:
     """제스처 인식 상태 머신"""
     
-    def __init__(self, prep_time: float = 5.0, exec_time: float = 1.0,
+    def __init__(self, prep_time: float = 1.5, exec_time: float = 1.0,
                  stability_threshold: float = 0.7):
         """
         Args:
@@ -374,12 +399,9 @@ class GestureStateMachine:
             self.exec_region_history.clear()
             elapsed = 0
         
-        # 손 위치 → 영역 매핑
+        # 손 위치 → 영역 매핑 (상태에 따른 동적 등분)
         if hand_position:
-            if self.state in [GameState.CATEGORY, GameState.SYLLABLE_COUNT]:
-                self.current_region = clock.get_region_for_5_zones(*hand_position)
-            else:
-                self.current_region = clock.get_region_index(*hand_position)
+            self.current_region = clock.get_region_for_state(*hand_position, self.state)
         else:
             self.current_region = None
         
@@ -407,11 +429,11 @@ class GestureStateMachine:
         self.confirmed_region = region
         
         if self.state == GameState.CATEGORY:
-            self.session.category = region
+            self.session.category = region  # 0~4
             self.state = GameState.SYLLABLE_COUNT
             
         elif self.state == GameState.SYLLABLE_COUNT:
-            self.session.syllable_count = region
+            self.session.syllable_count = region + 1  # 0→1글자, 1→2글자, ...
             self.state = GameState.CONSONANT
             
         elif self.state == GameState.CONSONANT:

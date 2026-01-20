@@ -26,7 +26,7 @@ from enum import Enum
 from gesture_agent import (
     ClockRegion, HandDetector, GestureStateMachine, WordMatcher,
     GameState, CATEGORIES, CONSONANTS, VOWELS, combine_hangul,
-    InputSession
+    InputSession, DIVISIONS_BY_STATE, NUM_CATEGORIES, NUM_CONSONANTS, NUM_VOWELS
 )
 
 
@@ -109,9 +109,12 @@ class GameUI:
     def draw_clock(self, frame: np.ndarray, clock: ClockRegion,
                    state: GameState, current_region: Optional[int],
                    is_prep: bool) -> np.ndarray:
-        """시계판 그리기"""
+        """시계판 그리기 (동적 등분 지원)"""
         cx, cy = clock.center
         radius = clock.radius
+        
+        # 현재 상태에 따른 등분 수 결정
+        num_divisions = DIVISIONS_BY_STATE.get(state, 12)
         
         # 반투명 오버레이
         overlay = frame.copy()
@@ -122,9 +125,12 @@ class GameUI:
         # 중심 무효 영역
         cv2.circle(overlay, (cx, cy), int(radius * 0.2), self.colors['dim'], 1)
         
-        # 12개 영역 및 라벨
-        for i in range(12):
-            angle_rad = math.radians(i * 30 - 90)
+        # 등분선 및 라벨
+        degrees_per_region = 360.0 / num_divisions
+        
+        for i in range(num_divisions):
+            angle_deg = i * degrees_per_region - 90  # 12시 방향 기준
+            angle_rad = math.radians(angle_deg)
             
             # 구분선
             x1 = int(cx + radius * 0.2 * math.cos(angle_rad))
@@ -133,59 +139,82 @@ class GameUI:
             y2 = int(cy + radius * math.sin(angle_rad))
             cv2.line(overlay, (x1, y1), (x2, y2), self.colors['dim'], 1)
             
-            # 라벨 위치
-            lx = int(cx + radius * 0.7 * math.cos(angle_rad))
-            ly = int(cy + radius * 0.7 * math.sin(angle_rad))
+            # 라벨 위치 (영역 중심)
+            label_angle_deg = (i + 0.5) * degrees_per_region - 90
+            label_angle_rad = math.radians(label_angle_deg)
+            lx = int(cx + radius * 0.65 * math.cos(label_angle_rad))
+            ly = int(cy + radius * 0.65 * math.sin(label_angle_rad))
             
             # 상태별 라벨 및 색상
-            label, color, is_valid = self._get_region_label(i, state)
+            label, color = self._get_dynamic_label(i, state, num_divisions)
             
             if label:
-                # 유효 영역 강조
-                if is_valid:
-                    # 배경 원
-                    cv2.circle(overlay, (lx, ly), 22, (60, 60, 60), -1)
-                    cv2.circle(overlay, (lx, ly), 22, color, 2)
+                # 배경 원 (가독성)
+                bg_radius = 18 if num_divisions <= 10 else 14
+                cv2.circle(overlay, (lx, ly), bg_radius, (50, 50, 50), -1)
+                cv2.circle(overlay, (lx, ly), bg_radius, color, 1)
                 
                 # 라벨 텍스트
-                frame = self.put_text(frame, label, (lx - 12, ly + 8), 24, color)
+                font_size = 20 if num_divisions <= 10 else 16
+                # 카테고리 상태일 때는 텍스트가 길므로 오프셋 조정
+                if state == GameState.CATEGORY:
+                    offset_x = len(label) * 6
+                    frame = self.put_text(frame, label, (lx - offset_x, ly + 8), 
+                                         18, color)
+                else:
+                    offset = 8 if num_divisions <= 10 else 6
+                    frame = self.put_text(frame, label, (lx - offset, ly + offset), 
+                                         font_size, color)
         
         # 현재 선택 영역 하이라이트
-        if current_region is not None:
-            angle_rad = math.radians(current_region * 30 - 90)
-            hx = int(cx + radius * 0.5 * math.cos(angle_rad))
-            hy = int(cy + radius * 0.5 * math.sin(angle_rad))
+        if current_region is not None and 0 <= current_region < num_divisions:
+            # 영역 중심 계산
+            highlight_angle_deg = (current_region + 0.5) * degrees_per_region - 90
+            highlight_angle_rad = math.radians(highlight_angle_deg)
+            hx = int(cx + radius * 0.5 * math.cos(highlight_angle_rad))
+            hy = int(cy + radius * 0.5 * math.sin(highlight_angle_rad))
             
             # 선택 표시
             highlight_color = self.colors['prep'] if is_prep else self.colors['exec']
-            cv2.circle(overlay, (hx, hy), 35, highlight_color, -1)
+            cv2.circle(overlay, (hx, hy), 30, highlight_color, -1)
             
             # 선택된 라벨 다시 그리기
-            label, _, _ = self._get_region_label(current_region, state)
+            label, _ = self._get_dynamic_label(current_region, state, num_divisions)
             if label:
-                frame = self.put_text(frame, label, (hx - 12, hy + 8), 28, (0, 0, 0))
+                frame = self.put_text(frame, label, (hx - 10, hy + 8), 24, (0, 0, 0))
         
         # 블렌딩
         result = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
         return result
     
-    def _get_region_label(self, region: int, state: GameState) -> Tuple[str, tuple, bool]:
-        """영역별 라벨, 색상, 유효 여부 반환"""
-        if state in [GameState.CATEGORY, GameState.SYLLABLE_COUNT]:
-            if 1 <= region <= 5:
-                return str(region), self.colors['highlight'], True
-            return "", self.colors['dim'], False
+    def _get_dynamic_label(self, region: int, state: GameState, 
+                           num_divisions: int) -> Tuple[str, tuple]:
+        """상태와 등분에 따른 라벨 반환"""
+        if state == GameState.CATEGORY:
+            full_labels = {
+                0: "1. 감정 및 상태", 
+                1: "2. 행동 및 동사", 
+                2: "3. 동물", 
+                3: "4. 스포츠", 
+                4: "5. 날씨 및 자연"
+            }
+            label = full_labels.get(region, "")
+            return label, self.colors['highlight']
+        
+        elif state == GameState.SYLLABLE_COUNT:
+            label = str(region + 1)  # 1~8글자
+            return label, self.colors['highlight']
         
         elif state == GameState.CONSONANT:
             label = CONSONANTS.get(region, "")
-            return label, self.colors['highlight'], bool(label)
+            return label, self.colors['highlight']
         
         elif state == GameState.VOWEL:
             label = VOWELS.get(region, "")
-            return label, (255, 200, 100), bool(label)
+            return label, (255, 200, 100)
         
         else:
-            return str(region), self.colors['dim'], False
+            return str(region), self.colors['dim']
     
     def draw_info_panel(self, frame: np.ndarray, status: dict,
                         candidates: List[str], 
