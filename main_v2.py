@@ -40,7 +40,7 @@ class GameConfig:
     frame_height: int = 480
     
     # 시간 설정 (초)
-    prep_time: float = 5.0
+    prep_time: float = 3.0
     exec_time: float = 1.0
     
     # 안정성 설정
@@ -705,7 +705,7 @@ if __name__ == "__main__":
                        help="시뮬레이션 모드 (웹캠 없이)")
     parser.add_argument("--no-audio", action="store_true",
                        help="오디오 비활성화")
-    parser.add_argument("--prep-time", type=float, default=1.5,
+    parser.add_argument("--prep-time", type=float, default=3.0,
                        help="준비 시간 (초)")
     parser.add_argument("--exec-time", type=float, default=1.0,
                        help="실행 시간 (초)")
