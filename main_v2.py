@@ -35,14 +35,13 @@ from gesture_agent import (
 @dataclass
 class GameConfig:
     """게임 설정"""
-    # 화면 설정
-    frame_width: int = 640
-    frame_height: int = 480
+    # 화면 설정 (HD 해상도로 변경)
+    frame_width: int = 1280
+    frame_height: int = 720
     
     # 시간 설정 (초)
     prep_time: float = 3.0
-    exec_time: float = 1.0
-    
+    exec_time: float = 1.0    
     # 안정성 설정
     stability_threshold: float = 0.7
     
@@ -219,94 +218,91 @@ class GameUI:
     def draw_info_panel(self, frame: np.ndarray, status: dict,
                         candidates: List[str], 
                         game_time: float) -> np.ndarray:
-        """우측 정보 패널"""
+        """우측 정보 패널 (상세 정보 표시)"""
         h, w = frame.shape[:2]
-        panel_width = 220
+        panel_width = 350  # 패널 너비 더 확대 (HD 해상도 대응)
         
         # 패널 배경
         cv2.rectangle(frame, (w - panel_width, 0), (w, h), 
                      self.colors['panel_bg'], -1)
         
-        x = w - panel_width + 15
-        y = 30
-        line_height = 28
+        x = w - panel_width + 20
+        y = 40
+        line_height = 32  # 줄 간격 확대
         
-        # 게임 시간
+        # 1. 시스템 상태
         minutes = int(game_time) // 60
         seconds = int(game_time) % 60
-        frame = self.put_text(frame, f"Time: {minutes}:{seconds:02d}", (x, y), 22)
+        frame = self.put_text(frame, f"Time: {minutes}:{seconds:02d}", (x, y), 24)
         y += line_height
         
-        # 구분선
-        cv2.line(frame, (x, y), (w - 15, y), self.colors['dim'], 1)
-        y += 15
-        
-        # 현재 상태
         state_name = status['state']
         state_korean = {
-            'IDLE': '대기',
-            'CATEGORY': '카테고리',
-            'SYLLABLE_COUNT': '글자수',
-            'CONSONANT': '자음',
-            'VOWEL': '모음',
-            'COMPLETE': '완료'
+            'IDLE': '대기', 'CATEGORY': '카테고리 선택', 'SYLLABLE_COUNT': '글자수 선택',
+            'CONSONANT': '자음 입력', 'VOWEL': '모음 입력', 'COMPLETE': '★ 입력 완료 ★'
         }.get(state_name, state_name)
         
-        frame = self.put_text(frame, f"상태: {state_korean}", (x, y), 22)
+        state_color = self.colors['stable'] if state_name == 'COMPLETE' else self.colors['text']
+        frame = self.put_text(frame, f"상태: {state_korean}", (x, y), 22, state_color)
         y += line_height
         
-        # 위상
-        phase = status['phase']
-        phase_color = self.colors['prep'] if phase == '준비' else self.colors['exec']
-        frame = self.put_text(frame, f"위상: {phase}", (x, y), 22, phase_color)
-        y += line_height
-        
-        # 남은 시간
-        remaining = status['remaining']
-        frame = self.put_text(frame, f"남은시간: {remaining:.1f}s", (x, y), 20)
-        y += line_height
-        
-        # 안정성 (실행 중일 때만)
-        if status['phase'] == '실행':
-            stability = status.get('stability', 0)
-            stab_color = self.colors['stable'] if stability >= 0.7 else self.colors['unstable']
-            frame = self.put_text(frame, f"안정성: {stability:.0%}", (x, y), 20, stab_color)
-        y += line_height
-        
-        # 구분선
-        cv2.line(frame, (x, y), (w - 15, y), self.colors['dim'], 1)
-        y += 15
-        
-        # 세션 정보
-        session = status['session']
-        frame = self.put_text(frame, f"카테고리: {session['category']}", (x, y), 20)
-        y += line_height
-        
-        frame = self.put_text(frame, f"글자수: {session['syllable_count'] or '-'}", (x, y), 20)
-        y += line_height
-        
-        frame = self.put_text(frame, f"진행: {session['progress']}", (x, y), 20)
-        y += line_height
-        
-        # 현재 입력
-        current_word = session['current_word']
-        frame = self.put_text(frame, f"입력: {current_word or '-'}", (x, y), 24, 
-                             self.colors['highlight'])
+        # 위상 및 남은 시간
+        if state_name != 'COMPLETE':
+            phase = status['phase']
+            phase_color = self.colors['prep'] if phase == '준비' else self.colors['exec']
+            remaining = status['remaining']
+            frame = self.put_text(frame, f"{phase}: {remaining:.1f}초", (x, y), 24, phase_color)
+        else:
+            frame = self.put_text(frame, "SPACE: 재시작", (x, y), 24, self.colors['warning'])
         y += line_height + 10
         
         # 구분선
         cv2.line(frame, (x, y), (w - 15, y), self.colors['dim'], 1)
-        y += 15
+        y += 20
         
-        # 후보 단어
-        frame = self.put_text(frame, "추천 단어:", (x, y), 20)
+        # 2. 입력 세션 상세 정보
+        session = status['session']
+        
+        # 카테고리
+        cat_str = session['category'] if session['category'] else "미선택"
+        frame = self.put_text(frame, f"카테고리: {cat_str}", (x, y), 22, (200, 200, 255))
         y += line_height
         
-        for i, word in enumerate(candidates[:5]):
-            frame = self.put_text(frame, f" {i+1}. {word}", (x, y), 20, 
-                                 (100, 255, 100))
-            y += 24
+        # 글자수
+        syl_count = session['syllable_count']
+        syl_str = f"{syl_count}글자" if syl_count else "미선택"
+        frame = self.put_text(frame, f"글자수: {syl_str}", (x, y), 22, (200, 200, 255))
+        y += line_height
         
+        # 현재 입력 (자모음 분리 표시)
+        current_word = session['current_word']
+        frame = self.put_text(frame, f"현재 입력: {current_word}", (x, y), 26, self.colors['highlight'])
+        y += line_height + 15
+        
+        # 구분선
+        cv2.line(frame, (x, y), (w - 15, y), self.colors['dim'], 1)
+        y += 20
+        
+        # 3. 추천 후보 단어 (Top 5)
+        title = "최종 결과" if state_name == 'COMPLETE' else "AI 추천 단어"
+        title_color = self.colors['stable'] if state_name == 'COMPLETE' else (150, 255, 150)
+        frame = self.put_text(frame, f"[{title}]", (x, y), 24, title_color)
+        y += line_height + 5
+        
+        if candidates:
+            for i, word in enumerate(candidates[:10]): # 최대 10개
+                # 1순위는 매우 크게 강조
+                if i == 0:
+                    font_size = 40 if state_name == 'COMPLETE' else 30
+                    color = self.colors['stable'] if state_name == 'COMPLETE' else (0, 255, 0)
+                    frame = self.put_text(frame, f"1. {word}", (x, y + 10), font_size, color)
+                    y += font_size + 15
+                else:
+                    frame = self.put_text(frame, f"{i+1}. {word}", (x, y), 22, (200, 200, 200))
+                    y += 28
+        else:
+            frame = self.put_text(frame, "(후보 없음)", (x, y), 20, self.colors['dim'])
+            
         return frame
     
     def draw_progress_bar(self, frame: np.ndarray, status: dict,
@@ -408,29 +404,66 @@ class GameUI:
         return frame
     
     def draw_complete_screen(self, frame: np.ndarray, 
-                             word: str, candidates: List[str]) -> np.ndarray:
-        """완료 화면"""
+                             word: str, candidates: List[str],
+                             session_info: dict) -> np.ndarray:
+        """완료 화면 (최종 결과 및 추천 단어 표시)"""
         h, w = frame.shape[:2]
         
-        # 반투명 오버레이
+        # 반투명 오버레이 (전체 화면)
         overlay = frame.copy()
-        cv2.rectangle(overlay, (50, h//2 - 80), (w - 270, h//2 + 80),
-                     (0, 0, 0), -1)
-        frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
+        cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
+        frame = cv2.addWeighted(overlay, 0.85, frame, 0.15, 0)
         
-        # 입력된 단어
-        frame = self.put_text(frame, "입력 완료!", (70, h//2 - 50), 28, 
-                             self.colors['stable'])
-        frame = self.put_text(frame, word, (70, h//2), 48, 
-                             self.colors['highlight'])
+        # 중앙 정렬을 위한 기준 좌표
+        cx = w // 2
+        y = h // 2 - 150
         
-        # 매칭 결과
-        if candidates and word in candidates:
-            frame = self.put_text(frame, "✓ 단어 매칭 성공!", (70, h//2 + 50), 24,
-                                 self.colors['stable'])
-        elif candidates:
-            frame = self.put_text(frame, f"유사: {candidates[0]}", (70, h//2 + 50), 24,
-                                 self.colors['warning'])
+        # 1. 타이틀
+        frame = self.put_text(frame, "입력 완료!", (cx - 70, y), 32, self.colors['stable'])
+        y += 60
+        
+        # 2. 상세 정보 (카테고리 / 글자수)
+        cat = session_info.get('category', '미선택')
+        syl = session_info.get('syllable_count', 0)
+        info_str = f"[{cat}] - {syl}글자"
+        
+        # 텍스트 너비 대략 계산해서 중앙 정렬 (폰트 크기 24 기준)
+        text_w = len(info_str) * 12
+        frame = self.put_text(frame, info_str, (cx - text_w, y), 24, (200, 200, 200))
+        y += 50
+        
+        # 3. 사용자 입력 (수신호 결과)
+        label_w = len("입력값: ") * 12
+        frame = self.put_text(frame, "입력값:", (cx - 150, y), 24, (150, 150, 150))
+        frame = self.put_text(frame, word, (cx - 50, y), 36, self.colors['warning'])
+        y += 60
+        
+        # 구분선
+        cv2.line(frame, (cx - 200, y), (cx + 200, y), (100, 100, 100), 2)
+        y += 40
+        
+        # 4. 최종 추천 단어 (AI 판단 결과)
+        frame = self.put_text(frame, "AI 추천 결과:", (cx - 150, y), 24, (150, 255, 150))
+        y += 50
+        
+        if candidates:
+            # 1순위 단어 (가장 크게)
+            best_match = candidates[0]
+            text_w = len(best_match) * 20
+            frame = self.put_text(frame, best_match, (cx - text_w, y + 10), 50, self.colors['highlight'])
+            
+            # 2, 3순위 (작게 아래에)
+            if len(candidates) > 1:
+                y += 70
+                sub_matches = ", ".join(candidates[1:4])
+                text_w = len(sub_matches) * 10
+                frame = self.put_text(frame, f"(후보: {sub_matches})", (cx - text_w, y), 20, (150, 150, 150))
+        else:
+            frame = self.put_text(frame, "일치하는 단어 없음", (cx - 100, y), 28, (100, 100, 255))
+            
+        # 재시작 안내
+        y = h - 50
+        frame = self.put_text(frame, "SPACE: 다시 하기 / Q: 종료", (cx - 120, y), 20, self.colors['text'])
         
         return frame
 
@@ -458,10 +491,10 @@ class SpeedGameAppV2:
         if self.config.use_audio:
             self._init_audio()
         
-        # 시계판 설정 (오른쪽 패널 공간을 위해 왼쪽으로 이동)
+        # 시계판 설정
         self.clock = ClockRegion(
-            center=(self.config.frame_width // 2 - 100, self.config.frame_height // 2),
-            radius=min(self.config.frame_width, self.config.frame_height) // 3
+            center=(self.config.frame_width // 2 - 150, self.config.frame_height // 2),
+            radius=220  # 반지름 확대
         )
         
         # 카메라
@@ -592,10 +625,9 @@ class SpeedGameAppV2:
             if self.state_machine.state not in [GameState.IDLE, GameState.COMPLETE]:
                 frame = self.ui.draw_progress_bar(frame, status, self.state_machine)
             
-            # 완료 화면
-            if self.state_machine.state == GameState.COMPLETE:
-                word = session.get_current_word()
-                frame = self.ui.draw_complete_screen(frame, word, candidates)
+            # 완료 화면 (제거됨 - 우측 패널에 통합)
+            # if self.state_machine.state == GameState.COMPLETE:
+            #     ...
             
             # 화면 표시
             cv2.imshow("CBrain Speed Game - Phase 2", frame)
@@ -644,8 +676,8 @@ class SimulationAppV2:
         self.ui = GameUI(self.config)
         
         self.clock = ClockRegion(
-            center=(self.config.frame_width // 2 - 100, self.config.frame_height // 2),
-            radius=180
+            center=(self.config.frame_width // 2 - 150, self.config.frame_height // 2),
+            radius=220
         )
         
         self.mouse_pos = (0, 0)
@@ -701,9 +733,8 @@ class SimulationAppV2:
             if self.state_machine.state not in [GameState.IDLE, GameState.COMPLETE]:
                 frame = self.ui.draw_progress_bar(frame, status, self.state_machine)
             
-            if self.state_machine.state == GameState.COMPLETE:
-                word = session.get_current_word()
-                frame = self.ui.draw_complete_screen(frame, word, candidates)
+            # if self.state_machine.state == GameState.COMPLETE:
+            #     ...
             
             cv2.imshow("Simulation - Phase 2", frame)
             
