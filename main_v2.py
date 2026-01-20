@@ -458,9 +458,9 @@ class SpeedGameAppV2:
         if self.config.use_audio:
             self._init_audio()
         
-        # 시계판 설정
+        # 시계판 설정 (오른쪽 패널 공간을 위해 왼쪽으로 이동)
         self.clock = ClockRegion(
-            center=(self.config.frame_width // 2, self.config.frame_height // 2),
+            center=(self.config.frame_width // 2 - 100, self.config.frame_height // 2),
             radius=min(self.config.frame_width, self.config.frame_height) // 3
         )
         
@@ -644,7 +644,7 @@ class SimulationAppV2:
         self.ui = GameUI(self.config)
         
         self.clock = ClockRegion(
-            center=(self.config.frame_width // 2, self.config.frame_height // 2),
+            center=(self.config.frame_width // 2 - 100, self.config.frame_height // 2),
             radius=180
         )
         
