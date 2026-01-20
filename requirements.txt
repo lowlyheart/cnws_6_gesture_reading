@@ -1,0 +1,19 @@
+# CBrain Speed Game Agent - Phase 2 필수 패키지
+
+# 핵심 의존성
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# 손 검출 (권장)
+mediapipe>=0.10.0
+
+# 한글 렌더링
+Pillow>=10.0.0
+
+# 오디오 신호 (선택적)
+pyaudio>=0.2.13
+
+# 참고: pyaudio 설치 문제 시
+# Windows: pip install pipwin && pipwin install pyaudio
+# Mac: brew install portaudio && pip install pyaudio
+# Linux: sudo apt-get install python3-pyaudio
