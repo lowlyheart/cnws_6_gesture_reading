@@ -1,11 +1,12 @@
 # CBrain Speed Game Agent - Phase 2 필수 패키지
+# Target Python Version: 3.11.0
 
 # 핵심 의존성
 opencv-python>=4.8.0
 numpy>=1.24.0
 
 # 손 검출 (권장)
-mediapipe>=0.10.0
+mediapipe>=0.10.9
 
 # 한글 렌더링
 Pillow>=10.0.0
